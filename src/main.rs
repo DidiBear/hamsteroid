@@ -42,7 +42,7 @@ fn setup_physics(
     rapier_config: Res<RapierConfiguration>,
 ) {
     let collider_material = ColliderMaterial {
-        friction: 0.,
+        friction: 0.1,
         restitution: 0.9,
         ..Default::default()
     };
@@ -74,8 +74,8 @@ fn setup_physics(
     spawn_border(0.1, 6., Vec2::new(-6., 0.)); // left
     spawn_border(0.1, 6., Vec2::new(6., 0.)); // right
 
-    let shape_ball = shapes::Circle {
-        radius: 0.3 * rapier_config.scale,
+    let shape_ball = shapes::Ellipse {
+        radii: Vec2::new(0.35 * rapier_config.scale, 0.25 * rapier_config.scale),
         center: Vec2::ZERO,
     };
     let ccd = RigidBodyCcd {
@@ -113,6 +113,26 @@ fn setup_physics(
         })
         .insert(RigidBodyPositionSync::Discrete);
 
+    commands
+        .spawn()
+        .insert_bundle(GeometryBuilder::build_as(
+            &shape_ball,
+            ShapeColors::new(Color::RED),
+            DrawMode::Fill(FillOptions::default()),
+            Transform::default(),
+        ))
+        .insert_bundle(RigidBodyBundle {
+            position: Vec2::new(0.5, 0.5).into(),
+            ccd,
+            ..Default::default()
+        })
+        .insert_bundle(ColliderBundle {
+            shape: ColliderShape::ball(0.3),
+            material: collider_material.clone(),
+            ..Default::default()
+        })
+        .insert(RigidBodyPositionSync::Discrete);
+}
 
 fn apply_forces(
     mut input_events: EventReader<InputEvent>,
