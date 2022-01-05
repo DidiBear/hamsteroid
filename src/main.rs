@@ -155,12 +155,11 @@ fn apply_forces(
                     velocity.apply_impulse(mass_props, impulse.into());
                 }
             }
-            InputEvent::Focus => {
+            InputEvent::Stabilisation => {
                 for (_, _, mut damping) in rigid_bodies.iter_mut() {
-                    damping.linear_damping = 10.;
+                    damping.linear_damping = 6.;
                 }
             }
         }
     }
 }
-
