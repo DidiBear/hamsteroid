@@ -14,8 +14,25 @@ use inputs::{InputEvent, InputsPlugin};
 
 mod inputs;
 
+struct Constants {
+    default_damping: f32,
+    stabilisation_damping: f32,
+    impulse_value: f32,
+}
+
+impl Default for Constants {
+    fn default() -> Self {
+        Constants {
+            stabilisation_damping: 6.,
+            default_damping: 1.,
+            impulse_value: 30.,
+        }
+    }
+}
+
 fn main() {
     App::build()
+        .init_resource::<Constants>()
         .add_plugins(DefaultPlugins)
         .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
         .add_plugin(InputsPlugin)
@@ -38,6 +55,8 @@ struct Player;
 
 fn setup_physics(
     mut commands: Commands,
+    constants: Res<Constants>,
+
     mut materials: ResMut<Assets<ColorMaterial>>,
     rapier_config: Res<RapierConfiguration>,
 ) {
@@ -96,7 +115,7 @@ fn setup_physics(
             body_type: RigidBodyType::Dynamic,
             ccd,
             damping: RigidBodyDamping {
-                linear_damping: 1.,
+                linear_damping: constants.default_damping,
                 ..Default::default()
             },
             forces: RigidBodyForces {
@@ -135,6 +154,7 @@ fn setup_physics(
 }
 
 fn apply_forces(
+    constants: Res<Constants>,
     mut input_events: EventReader<InputEvent>,
     mut rigid_bodies: Query<
         (
@@ -148,16 +168,16 @@ fn apply_forces(
     for input_event in input_events.iter() {
         match input_event {
             InputEvent::Movement { direction } => {
-                let impulse = *direction * 30.;
+                let impulse = *direction * constants.impulse_value;
 
                 for (mut velocity, mass_props, mut damping) in rigid_bodies.iter_mut() {
-                    damping.linear_damping = 1.;
+                    damping.linear_damping = constants.default_damping;
                     velocity.apply_impulse(mass_props, impulse.into());
                 }
             }
             InputEvent::Stabilisation => {
                 for (_, _, mut damping) in rigid_bodies.iter_mut() {
-                    damping.linear_damping = 6.;
+                    damping.linear_damping = constants.stabilisation_damping;
                 }
             }
         }
