@@ -48,7 +48,11 @@ fn gamepad_system(
     mut input_events: EventWriter<InputEvent>,
 ) {
     for gamepad in lobby.gamepads.iter().cloned() {
-        if button_inputs.just_pressed(GamepadButton(gamepad, GamepadButtonType::South)) {
+        let south_button = GamepadButton(gamepad, GamepadButtonType::South);
+        if button_inputs.just_pressed(south_button) {
+            input_events.send(InputEvent::Stabilisation);
+        }
+        if button_inputs.just_released(south_button) {
             dbg!("pressed south !");
             let value_at = |axis| axes.get(GamepadAxis(gamepad, axis)).unwrap();
 
