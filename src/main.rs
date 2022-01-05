@@ -4,6 +4,7 @@
 #![deny(clippy::all, clippy::pedantic, clippy::cargo, clippy::nursery)]
 
 use bevy::{input::system::exit_on_esc_system, prelude::*};
+use bevy_inspector_egui::{Inspectable, InspectorPlugin};
 use bevy_prototype_lyon::{
     plugin::ShapePlugin,
     prelude::{DrawMode, FillOptions, GeometryBuilder, ShapeColors},
@@ -14,6 +15,7 @@ use inputs::{InputEvent, InputsPlugin};
 
 mod inputs;
 
+#[derive(Inspectable)]
 struct Constants {
     default_damping: f32,
     stabilisation_damping: f32,
@@ -32,8 +34,8 @@ impl Default for Constants {
 
 fn main() {
     App::build()
-        .init_resource::<Constants>()
         .add_plugins(DefaultPlugins)
+        .add_plugin(InspectorPlugin::<Constants>::new())
         .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
         .add_plugin(InputsPlugin)
         .add_plugin(ShapePlugin)
