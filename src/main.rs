@@ -169,7 +169,7 @@ fn apply_forces(
 ) {
     for input_event in input_events.iter() {
         match input_event {
-            InputEvent::Movement { direction } => {
+            InputEvent::Impulse { direction } => {
                 let impulse = *direction * constants.impulse_value;
 
                 for (mut velocity, mass_props, mut damping) in rigid_bodies.iter_mut() {

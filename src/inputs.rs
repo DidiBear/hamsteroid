@@ -13,7 +13,7 @@ impl Plugin for InputsPlugin {
 }
 
 pub enum InputEvent {
-    Movement { direction: Vec2 },
+    Impulse { direction: Vec2 },
     Stabilisation,
     Accelerate,
 }
@@ -63,7 +63,7 @@ fn gamepad_system(
             let direction = Vec2::new(x, y).normalize();
             dbg!(direction);
 
-            input_events.send(InputEvent::Movement { direction })
+            input_events.send(InputEvent::Impulse { direction })
         }
     }
 }
@@ -79,7 +79,7 @@ fn keyboard_system(
         input_events.send(InputEvent::Stabilisation);
     }
     if keyboard_inputs.just_released(KeyCode::Space) {
-        input_events.send(InputEvent::Movement {
+        input_events.send(InputEvent::Impulse {
             direction: keyboard_direction(&keyboard_inputs),
         })
     }
