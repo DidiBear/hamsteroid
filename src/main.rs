@@ -4,7 +4,7 @@
 #![deny(clippy::all, clippy::pedantic, clippy::cargo, clippy::nursery)]
 
 use bevy::{input::system::exit_on_esc_system, prelude::*};
-use bevy_inspector_egui::{Inspectable, InspectorPlugin};
+use bevy_inspector_egui::{Inspectable, InspectorPlugin, WorldInspectorPlugin};
 use bevy_prototype_lyon::{
     plugin::ShapePlugin,
     prelude::{DrawMode, FillOptions, GeometryBuilder, ShapeColors},
@@ -40,6 +40,7 @@ fn main() {
     App::build()
         .add_plugins(DefaultPlugins)
         .add_plugin(InspectorPlugin::<Constants>::new())
+        .add_plugin(WorldInspectorPlugin::new())
         .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
         .add_plugin(InputsPlugin)
         .add_plugin(ShapePlugin)
@@ -47,6 +48,7 @@ fn main() {
         .add_startup_system(setup_physics.system().after("main-setup"))
         .add_system(exit_on_esc_system.system())
         .add_system(apply_forces.system())
+        .add_system(update_heat_color.system())
         .run();
 }
 
@@ -58,6 +60,16 @@ fn setup(mut commands: Commands, mut rapier_config: ResMut<RapierConfiguration>)
 }
 
 struct Player;
+
+struct Heat {
+    amount: f32,
+}
+
+impl Heat {
+    fn inc(&mut self, value: f32) {
+        self.amount = (self.amount + value).clamp(0., 1.);
+    }
+}
 
 fn setup_physics(
     mut commands: Commands,
@@ -109,6 +121,7 @@ fn setup_physics(
     commands
         .spawn()
         .insert(Player)
+        .insert(Heat { amount: 0. })
         .insert_bundle(GeometryBuilder::build_as(
             &shape_ball,
             ShapeColors::new(Color::ORANGE),
@@ -166,6 +179,7 @@ fn apply_forces(
             &RigidBodyMassProps,
             &mut RigidBodyDamping,
             &mut RigidBodyForces,
+            &mut Heat,
         ),
         With<Player>,
     >,
@@ -175,30 +189,43 @@ fn apply_forces(
             InputEvent::Impulse { direction } => {
                 let impulse = *direction * constants.impulse_value;
 
-                for (mut velocity, mass_props, mut damping, _) in rigid_bodies.iter_mut() {
+                for (mut velocity, mass_props, mut damping, _, mut heat) in rigid_bodies.iter_mut()
+                {
                     damping.linear_damping = constants.default_damping;
                     velocity.apply_impulse(mass_props, impulse.into());
+                    heat.inc(0.1)
                 }
             }
             InputEvent::Stabilisation => {
-                for (_, _, mut damping, _) in rigid_bodies.iter_mut() {
+                for (_, _, mut damping, _, mut heat) in rigid_bodies.iter_mut() {
                     damping.linear_damping = constants.stabilisation_damping;
+                    heat.inc(-1.)
                 }
             }
             InputEvent::Accelerate => {
-                for (mut velocity, mass_props, _, _) in rigid_bodies.iter_mut() {
+                for (mut velocity, mass_props, _, _, mut heat) in rigid_bodies.iter_mut() {
                     let impulse = velocity.linvel * constants.acceleration_value;
                     velocity.apply_impulse(mass_props, impulse.into());
+                    heat.inc(0.1)
                 }
             }
             InputEvent::Force { direction } => {
                 let force = *direction * constants.force_value;
 
-                for (_, _, mut damping, mut forces) in rigid_bodies.iter_mut() {
+                for (_, _, mut damping, mut forces, mut heat) in rigid_bodies.iter_mut() {
                     damping.linear_damping = constants.default_damping;
                     forces.force = force.into();
+                    heat.inc(0.01)
                 }
             }
         }
+    }
+}
+
+fn update_heat_color(mut colors: Query<(&Heat, &mut ShapeColors), (With<Player>, Changed<Heat>)>) {
+    for (heat, mut colors) in colors.iter_mut() {
+        // TODO: make it work
+        let percent = heat.amount;
+        colors.main = Color::RED * percent + Color::MIDNIGHT_BLUE * (1. - percent);
     }
 }
