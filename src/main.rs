@@ -20,6 +20,7 @@ struct Constants {
     default_damping: f32,
     stabilisation_damping: f32,
     impulse_value: f32,
+    force_value: f32,
     acceleration_value: f32,
 }
 
@@ -29,6 +30,7 @@ impl Default for Constants {
             stabilisation_damping: 6.,
             default_damping: 1.,
             impulse_value: 15.,
+            force_value: 6.,
             acceleration_value: 0.3,
         }
     }
@@ -163,6 +165,7 @@ fn apply_forces(
             &mut RigidBodyVelocity,
             &RigidBodyMassProps,
             &mut RigidBodyDamping,
+            &mut RigidBodyForces,
         ),
         With<Player>,
     >,
@@ -172,21 +175,28 @@ fn apply_forces(
             InputEvent::Impulse { direction } => {
                 let impulse = *direction * constants.impulse_value;
 
-                for (mut velocity, mass_props, mut damping) in rigid_bodies.iter_mut() {
+                for (mut velocity, mass_props, mut damping, _) in rigid_bodies.iter_mut() {
                     damping.linear_damping = constants.default_damping;
                     velocity.apply_impulse(mass_props, impulse.into());
                 }
             }
             InputEvent::Stabilisation => {
-                for (_, _, mut damping) in rigid_bodies.iter_mut() {
+                for (_, _, mut damping, _) in rigid_bodies.iter_mut() {
                     damping.linear_damping = constants.stabilisation_damping;
                 }
             }
             InputEvent::Accelerate => {
-                for (mut velocity, mass_props, _) in rigid_bodies.iter_mut() {
+                for (mut velocity, mass_props, _, _) in rigid_bodies.iter_mut() {
                     let impulse = velocity.linvel * constants.acceleration_value;
-
                     velocity.apply_impulse(mass_props, impulse.into());
+                }
+            }
+            InputEvent::Force { direction } => {
+                let force = *direction * constants.force_value;
+
+                for (_, _, mut damping, mut forces) in rigid_bodies.iter_mut() {
+                    damping.linear_damping = constants.default_damping;
+                    forces.force = force.into();
                 }
             }
         }

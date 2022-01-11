@@ -14,6 +14,7 @@ impl Plugin for InputsPlugin {
 
 pub enum InputEvent {
     Impulse { direction: Vec2 },
+    Force { direction: Vec2 },
     Stabilisation,
     Accelerate,
 }
@@ -79,9 +80,16 @@ fn keyboard_system(
         input_events.send(InputEvent::Stabilisation);
     }
     if keyboard_inputs.just_released(KeyCode::Space) {
-        input_events.send(InputEvent::Impulse {
-            direction: keyboard_direction(&keyboard_inputs),
-        })
+        let direction = keyboard_direction(&keyboard_inputs);
+        if direction != Vec2::ZERO {
+            input_events.send(InputEvent::Impulse { direction })
+        }
+    }
+    if !keyboard_inputs.pressed(KeyCode::Space) {
+        let direction = keyboard_direction(&keyboard_inputs);
+        if direction != Vec2::ZERO {
+            input_events.send(InputEvent::Force { direction })
+        }
     }
 }
 
