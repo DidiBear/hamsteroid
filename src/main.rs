@@ -20,6 +20,7 @@ struct Constants {
     default_damping: f32,
     stabilisation_damping: f32,
     impulse_value: f32,
+    acceleration_value: f32,
 }
 
 impl Default for Constants {
@@ -27,7 +28,8 @@ impl Default for Constants {
         Constants {
             stabilisation_damping: 6.,
             default_damping: 1.,
-            impulse_value: 30.,
+            impulse_value: 15.,
+            acceleration_value: 0.3,
         }
     }
 }
@@ -58,12 +60,10 @@ struct Player;
 fn setup_physics(
     mut commands: Commands,
     constants: Res<Constants>,
-
-    mut materials: ResMut<Assets<ColorMaterial>>,
     rapier_config: Res<RapierConfiguration>,
 ) {
     let collider_material = ColliderMaterial {
-        friction: 0.1,
+        friction: 0.,
         restitution: 0.9,
         ..Default::default()
     };
@@ -180,6 +180,13 @@ fn apply_forces(
             InputEvent::Stabilisation => {
                 for (_, _, mut damping) in rigid_bodies.iter_mut() {
                     damping.linear_damping = constants.stabilisation_damping;
+                }
+            }
+            InputEvent::Accelerate => {
+                for (mut velocity, mass_props, _) in rigid_bodies.iter_mut() {
+                    let impulse = velocity.linvel * constants.acceleration_value;
+
+                    velocity.apply_impulse(mass_props, impulse.into());
                 }
             }
         }

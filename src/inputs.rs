@@ -15,6 +15,7 @@ impl Plugin for InputsPlugin {
 pub enum InputEvent {
     Movement { direction: Vec2 },
     Stabilisation,
+    Accelerate,
 }
 
 #[derive(Default)]
@@ -71,6 +72,9 @@ fn keyboard_system(
     keyboard_inputs: Res<Input<KeyCode>>,
     mut input_events: EventWriter<InputEvent>,
 ) {
+    if keyboard_inputs.just_pressed(KeyCode::A) {
+        input_events.send(InputEvent::Accelerate);
+    }
     if keyboard_inputs.just_pressed(KeyCode::Space) {
         input_events.send(InputEvent::Stabilisation);
     }
