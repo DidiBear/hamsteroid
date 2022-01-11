@@ -2,14 +2,11 @@
 #![warn(missing_docs)]
 #![forbid(unsafe_code)]
 #![deny(clippy::all, clippy::pedantic, clippy::cargo, clippy::nursery)]
+#![deny(clippy::unwrap_used, clippy::indexing_slicing)]
 
 use bevy::{input::system::exit_on_esc_system, prelude::*};
 use bevy_inspector_egui::{Inspectable, InspectorPlugin, WorldInspectorPlugin};
-use bevy_prototype_lyon::{
-    plugin::ShapePlugin,
-    prelude::{DrawMode, FillOptions, GeometryBuilder, ShapeColors},
-    shapes,
-};
+use bevy_prototype_lyon::prelude::*;
 use bevy_rapier2d::prelude::*;
 use inputs::{InputEvent, InputsPlugin};
 
@@ -37,18 +34,18 @@ impl Default for Constants {
 }
 
 fn main() {
-    App::build()
+    App::new()
         .add_plugins(DefaultPlugins)
         .add_plugin(InspectorPlugin::<Constants>::new())
         .add_plugin(WorldInspectorPlugin::new())
         .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
         .add_plugin(InputsPlugin)
         .add_plugin(ShapePlugin)
-        .add_startup_system(setup.system().label("main-setup"))
-        .add_startup_system(setup_physics.system().after("main-setup"))
-        .add_system(exit_on_esc_system.system())
-        .add_system(apply_forces.system())
-        .add_system(update_heat_color.system())
+        .add_startup_system(setup.label("main-setup"))
+        .add_startup_system(setup_physics.after("main-setup"))
+        .add_system(exit_on_esc_system)
+        .add_system(apply_forces)
+        .add_system(update_heat_color)
         .run();
 }
 
@@ -59,8 +56,10 @@ fn setup(mut commands: Commands, mut rapier_config: ResMut<RapierConfiguration>)
     rapier_config.scale = 100.;
 }
 
+#[derive(Component)]
 struct Player;
 
+#[derive(Component)]
 struct Heat {
     amount: f32,
 }
@@ -87,18 +86,16 @@ fn setup_physics(
             .spawn()
             .insert_bundle(GeometryBuilder::build_as(
                 &shapes::Rectangle {
-                    width: w * rapier_config.scale * 2.,
-                    height: h * rapier_config.scale * 2.,
+                    extents: Vec2::new(w, h) * rapier_config.scale * 2.,
                     ..Default::default()
                 },
-                ShapeColors::new(Color::WHITE),
-                DrawMode::Fill(FillOptions::default()),
+                DrawMode::Fill(FillMode::color(Color::WHITE)),
                 Transform::default(),
             ))
             .insert_bundle(ColliderBundle {
-                shape: ColliderShape::cuboid(w, h),
+                shape: ColliderShape::cuboid(w, h).into(),
                 position: pos.into(),
-                material: collider_material.clone(),
+                material: collider_material.clone().into(),
                 ..Default::default()
             })
             .insert(ColliderPositionSync::Discrete);
@@ -124,27 +121,27 @@ fn setup_physics(
         .insert(Heat { amount: 0. })
         .insert_bundle(GeometryBuilder::build_as(
             &shape_ball,
-            ShapeColors::new(Color::ORANGE),
-            DrawMode::Fill(FillOptions::default()),
+            DrawMode::Fill(FillMode::color(Color::ORANGE)),
             Transform::default(),
         ))
         .insert_bundle(RigidBodyBundle {
-            body_type: RigidBodyType::Dynamic,
-            ccd,
+            body_type: RigidBodyType::Dynamic.into(),
+            ccd: ccd.clone().into(),
             damping: RigidBodyDamping {
                 linear_damping: constants.default_damping,
                 ..Default::default()
-            },
+            }
+            .into(),
             forces: RigidBodyForces {
                 gravity_scale: 0.,
                 ..Default::default()
-            },
+            }
+            .into(),
             ..Default::default()
         })
         .insert_bundle(ColliderBundle {
-            shape: ColliderShape::ball(0.3),
-            // mass_properties: ColliderMassProps::Density(1.),
-            material: collider_material.clone(),
+            shape: ColliderShape::ball(0.3).into(),
+            material: collider_material.clone().into(),
             ..Default::default()
         })
         .insert(RigidBodyPositionSync::Discrete);
@@ -153,18 +150,17 @@ fn setup_physics(
         .spawn()
         .insert_bundle(GeometryBuilder::build_as(
             &shape_ball,
-            ShapeColors::new(Color::RED),
-            DrawMode::Fill(FillOptions::default()),
+            DrawMode::Fill(FillMode::color(Color::RED)),
             Transform::default(),
         ))
         .insert_bundle(RigidBodyBundle {
             position: Vec2::new(0.5, 0.5).into(),
-            ccd,
+            ccd: ccd.clone().into(),
             ..Default::default()
         })
         .insert_bundle(ColliderBundle {
-            shape: ColliderShape::ball(0.3),
-            material: collider_material.clone(),
+            shape: ColliderShape::ball(0.3).into(),
+            material: collider_material.clone().into(),
             ..Default::default()
         })
         .insert(RigidBodyPositionSync::Discrete);
@@ -175,10 +171,10 @@ fn apply_forces(
     mut input_events: EventReader<InputEvent>,
     mut rigid_bodies: Query<
         (
-            &mut RigidBodyVelocity,
-            &RigidBodyMassProps,
-            &mut RigidBodyDamping,
-            &mut RigidBodyForces,
+            &mut RigidBodyVelocityComponent,
+            &RigidBodyMassPropsComponent,
+            &mut RigidBodyDampingComponent,
+            &mut RigidBodyForcesComponent,
             &mut Heat,
         ),
         With<Player>,
@@ -222,10 +218,11 @@ fn apply_forces(
     }
 }
 
-fn update_heat_color(mut colors: Query<(&Heat, &mut ShapeColors), (With<Player>, Changed<Heat>)>) {
-    for (heat, mut colors) in colors.iter_mut() {
-        // TODO: make it work
-        let percent = heat.amount;
-        colors.main = Color::RED * percent + Color::MIDNIGHT_BLUE * (1. - percent);
+fn update_heat_color(mut colors: Query<(&Heat, &mut DrawMode), (With<Player>, Changed<Heat>)>) {
+    for (heat, draw_mode) in colors.iter_mut() {
+        if let DrawMode::Fill(mut fill_mode) = *draw_mode {
+            let percent = heat.amount;
+            fill_mode.color = Color::RED * percent + Color::MIDNIGHT_BLUE * (1. - percent);
+        }
     }
 }

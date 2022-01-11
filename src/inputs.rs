@@ -1,14 +1,12 @@
-use bevy::{prelude::*, utils::HashSet};
+use bevy::prelude::*;
 
 pub struct InputsPlugin;
 
 impl Plugin for InputsPlugin {
-    fn build(&self, app: &mut AppBuilder) {
+    fn build(&self, app: &mut App) {
         app.add_event::<InputEvent>()
-            .init_resource::<GamepadLobby>()
-            .add_system_to_stage(CoreStage::PreUpdate, connection_system.system())
-            .add_system(gamepad_system.system())
-            .add_system(keyboard_system.system());
+            .add_system(gamepad_system)
+            .add_system(keyboard_system);
     }
 }
 
@@ -19,37 +17,13 @@ pub enum InputEvent {
     Accelerate,
 }
 
-#[derive(Default)]
-struct GamepadLobby {
-    gamepads: HashSet<Gamepad>,
-}
-
-fn connection_system(
-    mut lobby: ResMut<GamepadLobby>,
-    mut gamepad_event: EventReader<GamepadEvent>,
-) {
-    for event in gamepad_event.iter() {
-        match &event {
-            GamepadEvent(gamepad, GamepadEventType::Connected) => {
-                lobby.gamepads.insert(*gamepad);
-                println!("{:?} Connected", gamepad);
-            }
-            GamepadEvent(gamepad, GamepadEventType::Disconnected) => {
-                lobby.gamepads.remove(gamepad);
-                println!("{:?} Disconnected", gamepad);
-            }
-            _ => (),
-        }
-    }
-}
-
 fn gamepad_system(
-    lobby: Res<GamepadLobby>,
+    gamepads: Res<Gamepads>,
     button_inputs: Res<Input<GamepadButton>>,
     axes: Res<Axis<GamepadAxis>>,
     mut input_events: EventWriter<InputEvent>,
 ) {
-    for gamepad in lobby.gamepads.iter().cloned() {
+    for gamepad in gamepads.iter().cloned() {
         let south_button = GamepadButton(gamepad, GamepadButtonType::South);
         if button_inputs.just_pressed(south_button) {
             input_events.send(InputEvent::Stabilisation);
