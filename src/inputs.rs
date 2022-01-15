@@ -1,12 +1,15 @@
 use bevy::prelude::*;
 
+use crate::Player;
+
 pub struct InputsPlugin;
 
 impl Plugin for InputsPlugin {
     fn build(&self, app: &mut App) {
         app.add_event::<InputEvent>()
             .add_system(gamepad_system)
-            .add_system(keyboard_system);
+            .add_system(keyboard_system)
+            .add_system(mouse_system);
     }
 }
 
@@ -82,4 +85,31 @@ fn keyboard_direction(keyboard_inputs: &Input<KeyCode>) -> Vec2 {
         direction += Vec2::new(1., 0.);
     }
     direction.normalize_or_zero()
+}
+
+fn mouse_system(
+    mouse_inputs: Res<Input<MouseButton>>,
+    windows: Res<Windows>,
+    transforms: Query<&Transform, With<Player>>,
+    mut input_events: EventWriter<InputEvent>,
+) {
+    if mouse_inputs.pressed(MouseButton::Left) {
+        let direction = mouse_direction(&windows, transforms.single());
+        input_events.send(InputEvent::Force { direction })
+    }
+    if mouse_inputs.just_pressed(MouseButton::Right) {
+        let direction = mouse_direction(&windows, transforms.single());
+        input_events.send(InputEvent::Impulse { direction })
+    }
+}
+
+fn mouse_direction(windows: &Windows, player_transform: &Transform) -> Vec2 {
+    let window = windows.get_primary().unwrap();
+    let resolution = Vec2::new(window.width(), window.height());
+
+    // The cursor position in in bottom left while player pos is in the center
+    let mouse_pos = window.cursor_position().unwrap() - resolution / 2.0;
+    let player_pos = player_transform.translation.truncate();
+
+    (mouse_pos - player_pos).normalize_or_zero()
 }
