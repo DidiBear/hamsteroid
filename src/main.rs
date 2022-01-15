@@ -8,8 +8,10 @@ use bevy::{input::system::exit_on_esc_system, prelude::*};
 use bevy_inspector_egui::{Inspectable, InspectorPlugin, WorldInspectorPlugin};
 use bevy_prototype_lyon::prelude::*;
 use bevy_rapier2d::prelude::*;
+use cooldown::Cooldown;
 use inputs::{InputEvent, InputsPlugin};
 
+mod cooldown;
 mod inputs;
 
 #[derive(Inspectable)]
@@ -166,8 +168,18 @@ fn setup_physics(
         .insert(RigidBodyPositionSync::Discrete);
 }
 
+struct ImpulseCooldown(Cooldown);
+
+impl Default for ImpulseCooldown {
+    fn default() -> Self {
+        ImpulseCooldown(Cooldown::from_seconds(0.35))
+    }
+}
+
 fn apply_forces(
     constants: Res<Constants>,
+    mut impulse_cooldown: Local<ImpulseCooldown>,
+    time: Res<Time>,
     mut input_events: EventReader<InputEvent>,
     mut rigid_bodies: Query<
         (
@@ -180,9 +192,16 @@ fn apply_forces(
         With<Player>,
     >,
 ) {
+    impulse_cooldown.0.tick(time.delta());
+
     for input_event in input_events.iter() {
         match input_event {
             InputEvent::Impulse { direction } => {
+                if !impulse_cooldown.0.finished() {
+                    continue;
+                }
+                impulse_cooldown.0.start();
+
                 let impulse = *direction * constants.impulse_value;
 
                 for (mut velocity, mass_props, mut damping, _, mut heat) in rigid_bodies.iter_mut()
@@ -199,6 +218,11 @@ fn apply_forces(
                 }
             }
             InputEvent::Accelerate => {
+                if !impulse_cooldown.0.finished() {
+                    continue;
+                }
+                impulse_cooldown.0.start();
+
                 for (mut velocity, mass_props, _, _, mut heat) in rigid_bodies.iter_mut() {
                     let impulse = velocity.linvel * constants.acceleration_value;
                     velocity.apply_impulse(mass_props, impulse.into());
