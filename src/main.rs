@@ -16,21 +16,28 @@ mod inputs;
 
 #[derive(Inspectable)]
 struct Constants {
+    // Movement configs
     default_damping: f32,
     stabilisation_damping: f32,
     impulse_value: f32,
     force_value: f32,
     acceleration_value: f32,
+
+    // Trail configs
+    trail_size_scale: f32,
 }
 
 impl Default for Constants {
     fn default() -> Self {
         Constants {
+            // Movement configs
             stabilisation_damping: 6.,
             default_damping: 1.,
             impulse_value: 15.,
             force_value: 6.,
             acceleration_value: 0.3,
+            // Trail configs
+            trail_size_scale: 0.5,
         }
     }
 }
@@ -48,6 +55,7 @@ fn main() {
         .add_system(exit_on_esc_system)
         .add_system(apply_forces)
         .add_system(update_heat_color)
+        .add_system(update_trails)
         .run();
 }
 
@@ -60,6 +68,9 @@ fn setup(mut commands: Commands, mut rapier_config: ResMut<RapierConfiguration>)
 
 #[derive(Component)]
 struct Player;
+
+#[derive(Component)]
+struct Trail;
 
 #[derive(Component)]
 struct Heat {
@@ -77,6 +88,7 @@ fn setup_physics(
     constants: Res<Constants>,
     rapier_config: Res<RapierConfiguration>,
 ) {
+    let scale = rapier_config.scale;
     let collider_material = ColliderMaterial {
         friction: 0.,
         restitution: 0.9,
@@ -88,7 +100,7 @@ fn setup_physics(
             .spawn()
             .insert_bundle(GeometryBuilder::build_as(
                 &shapes::Rectangle {
-                    extents: Vec2::new(w, h) * rapier_config.scale * 2.,
+                    extents: Vec2::new(w, h) * scale * 2.,
                     ..Default::default()
                 },
                 DrawMode::Fill(FillMode::color(Color::WHITE)),
@@ -108,8 +120,8 @@ fn setup_physics(
     spawn_border(0.1, 6., Vec2::new(-6., 0.)); // left
     spawn_border(0.1, 6., Vec2::new(6., 0.)); // right
 
-    let shape_ball = shapes::Ellipse {
-        radii: Vec2::new(0.35 * rapier_config.scale, 0.25 * rapier_config.scale),
+    let shape_ball = shapes::Circle {
+        radius: 0.3 * scale,
         center: Vec2::ZERO,
     };
     let ccd = RigidBodyCcd {
@@ -146,7 +158,20 @@ fn setup_physics(
             material: collider_material.clone().into(),
             ..Default::default()
         })
-        .insert(RigidBodyPositionSync::Discrete);
+        .insert(RigidBodyPositionSync::Discrete)
+        .with_children(|commands| {
+            let mut color = Color::ORANGE;
+            color.set_a(0.5);
+
+            commands
+                .spawn()
+                .insert(Trail)
+                .insert_bundle(GeometryBuilder::build_as(
+                    &shapes::Polygon::default(),
+                    DrawMode::Fill(FillMode::color(color)),
+                    Transform::default(),
+                ));
+        });
 
     commands
         .spawn()
@@ -248,5 +273,45 @@ fn update_heat_color(mut colors: Query<(&Heat, &mut DrawMode), (With<Player>, Ch
             let percent = heat.amount;
             fill_mode.color = Color::RED * percent + Color::MIDNIGHT_BLUE * (1. - percent);
         }
+    }
+}
+
+#[derive(Default)]
+struct Position(Vec2);
+
+fn update_trails(
+    mut trail_paths: Query<(&mut Path, &Parent), With<Trail>>,
+    mut previous_pos: Local<Position>,
+    transforms: Query<&Transform, Changed<RigidBodyVelocityComponent>>,
+    rapier_config: Res<RapierConfiguration>,
+    constants: Res<Constants>,
+) {
+    let scale = rapier_config.scale;
+    let size = 0.3 * scale;
+
+    for (mut path, parent) in trail_paths.iter_mut() {
+        let pos = if let Ok(transform) = transforms.get(parent.0) {
+            transform.translation.truncate()
+        } else {
+            continue;
+        };
+
+        let delta = previous_pos.0 - pos;
+        previous_pos.0 = pos;
+
+        if delta == Vec2::ZERO {
+            continue;
+        }
+        let trail = delta.normalize() * (size * constants.trail_size_scale + delta.length());
+
+        let polygon = shapes::Polygon {
+            points: vec![
+                trail,
+                Vec2::new(trail.y, -trail.x).normalize() * size, // 90 degrees clockwize
+                Vec2::new(-trail.y, trail.x).normalize() * size, // 90 degrees counterclockwize
+            ],
+            closed: true,
+        };
+        *path = ShapePath::build_as(&polygon);
     }
 }
