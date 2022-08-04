@@ -19,7 +19,7 @@ impl Cooldown {
     }
 
     pub fn start(&mut self) {
-        self.timer.reset()
+        self.timer.reset();
     }
 
     pub fn tick(&mut self, delta: Duration) -> &Self {

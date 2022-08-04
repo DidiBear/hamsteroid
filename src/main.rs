@@ -1,18 +1,28 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 #![forbid(unsafe_code)]
-#![deny(clippy::all, clippy::pedantic, clippy::cargo, clippy::nursery)]
+#![deny(clippy::all, clippy::pedantic, clippy::nursery)] // clippy::cargo
 #![deny(clippy::unwrap_used, clippy::indexing_slicing)]
+#![allow(
+    clippy::needless_pass_by_value,
+    clippy::type_complexity,
+    clippy::module_name_repetitions
+)]
 
-use bevy::{input::system::exit_on_esc_system, prelude::*};
+use bevy::{prelude::*, window::close_on_esc};
 use bevy_inspector_egui::{Inspectable, InspectorPlugin, WorldInspectorPlugin};
-use bevy_prototype_lyon::prelude::*;
-use bevy_rapier2d::prelude::*;
-use cooldown::Cooldown;
-use inputs::{InputEvent, InputsPlugin};
+use bevy_rapier3d::prelude::*;
+
+// use bevy_flycam::{FlyCam, NoCameraPlayerPlugin, PlayerPlugin};
 
 mod cooldown;
 mod inputs;
+
+use cooldown::Cooldown;
+use inputs::{InputEvent, InputsPlugin};
+
+const DEPTH: f32 = 0.1;
+const Z: f32 = 0.0;
 
 #[derive(Inspectable)]
 struct Constants {
@@ -25,45 +35,57 @@ struct Constants {
 
     // Trail configs
     trail_size_scale: f32,
+
+    // Heat config
+    heat_increase: f32,
 }
 
 impl Default for Constants {
     fn default() -> Self {
-        Constants {
+        Self {
             // Movement configs
-            stabilisation_damping: 6.,
+            stabilisation_damping: 5.,
             default_damping: 1.,
-            impulse_value: 15.,
-            force_value: 6.,
+            impulse_value: 7.,
+            force_value: 3.,
             acceleration_value: 0.3,
             // Trail configs
             trail_size_scale: 0.5,
+            // Heat config
+            heat_increase: 0.2,
         }
     }
 }
 
 fn main() {
     App::new()
+        .insert_resource(Msaa::default())
         .add_plugins(DefaultPlugins)
+        .insert_resource(ClearColor(Color::GRAY))
         .add_plugin(InspectorPlugin::<Constants>::new())
         .add_plugin(WorldInspectorPlugin::new())
         .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
         .add_plugin(InputsPlugin)
-        .add_plugin(ShapePlugin)
-        .add_startup_system(setup.label("main-setup"))
-        .add_startup_system(setup_physics.after("main-setup"))
-        .add_system(exit_on_esc_system)
+        .add_plugin(RapierDebugRenderPlugin::default())
+        // .add_plugin(NoCameraPlayerPlugin)
+        .add_startup_system(setup_camera)
+        .add_startup_system(setup_physics)
+        .add_system(close_on_esc)
         .add_system(apply_forces)
+        .add_system(reset_z_position.after(apply_forces))
+        .add_system(cancel_force.before(apply_forces))
         .add_system(update_heat_color)
-        .add_system(update_trails)
         .run();
 }
 
-fn setup(mut commands: Commands, mut rapier_config: ResMut<RapierConfiguration>) {
-    commands.spawn_bundle(OrthographicCameraBundle::new_2d());
-    commands.spawn_bundle(UiCameraBundle::default());
-
-    rapier_config.scale = 100.;
+fn setup_camera(mut commands: Commands) {
+    commands
+        .spawn_bundle(Camera3dBundle {
+            transform: Transform::from_xyz(0., 0., Z + 10.0).looking_at(Vec3::ZERO, Vec3::Y),
+            ..Default::default()
+        })
+        // .insert(FlyCam)
+        ;
 }
 
 #[derive(Component)]
@@ -74,6 +96,7 @@ struct Trail;
 
 #[derive(Component)]
 struct Heat {
+    /// Between 0 and 1.
     amount: f32,
 }
 
@@ -83,121 +106,89 @@ impl Heat {
     }
 }
 
-fn setup_physics(
-    mut commands: Commands,
-    constants: Res<Constants>,
-    rapier_config: Res<RapierConfiguration>,
-) {
-    let scale = rapier_config.scale;
-    let collider_material = ColliderMaterial {
-        friction: 0.,
-        restitution: 0.9,
-        ..Default::default()
-    };
+fn setup_physics(mut commands: Commands, constants: Res<Constants>) {
+    commands
+        .spawn()
+        .insert(Name::new("Center"))
+        .insert_bundle(TransformBundle::from(Transform::from_xyz(0.0, 0.0, Z)))
+        .insert(Collider::ball(0.05));
 
-    let mut spawn_border = |w: f32, h: f32, pos: Vec2| {
+    let friction = Friction::coefficient(0.);
+    let restitution = Restitution::coefficient(0.9);
+
+    let mut spawn_border = |name: &str, w: f32, h: f32, pos: Vec2| {
         commands
             .spawn()
-            .insert_bundle(GeometryBuilder::build_as(
-                &shapes::Rectangle {
-                    extents: Vec2::new(w, h) * scale * 2.,
-                    ..Default::default()
-                },
-                DrawMode::Fill(FillMode::color(Color::WHITE)),
-                Transform::default(),
-            ))
-            .insert_bundle(ColliderBundle {
-                shape: ColliderShape::cuboid(w, h).into(),
-                position: pos.into(),
-                material: collider_material.clone().into(),
-                ..Default::default()
-            })
-            .insert(ColliderPositionSync::Discrete);
+            .insert(Name::new(name.to_string()))
+            .insert_bundle((Collider::cuboid(w, h, DEPTH), friction, restitution))
+            .insert_bundle(TransformBundle::from(Transform::from_xyz(pos.x, pos.y, Z)));
     };
 
-    spawn_border(12., 0.1, Vec2::new(0., 3.)); // top
-    spawn_border(12., 0.1, Vec2::new(0., -3.)); // bottom
-    spawn_border(0.1, 6., Vec2::new(-6., 0.)); // left
-    spawn_border(0.1, 6., Vec2::new(6., 0.)); // right
-
-    let shape_ball = shapes::Circle {
-        radius: 0.3 * scale,
-        center: Vec2::ZERO,
-    };
-    let ccd = RigidBodyCcd {
-        ccd_enabled: true,
-        ..Default::default()
-    };
+    spawn_border("Top", 10., 0.1, Vec2::new(0., 3.));
+    spawn_border("Bottom", 10., 0.1, Vec2::new(0., -3.));
+    spawn_border("Left", 0.1, 5., Vec2::new(-6., 0.));
+    spawn_border("Right", 0.1, 5., Vec2::new(6., 0.));
 
     commands
         .spawn()
+        .insert(Name::new("Player"))
         .insert(Player)
         .insert(Heat { amount: 0. })
-        .insert_bundle(GeometryBuilder::build_as(
-            &shape_ball,
-            DrawMode::Fill(FillMode::color(Color::ORANGE)),
-            Transform::default(),
-        ))
-        .insert_bundle(RigidBodyBundle {
-            body_type: RigidBodyType::Dynamic.into(),
-            ccd: ccd.clone().into(),
-            damping: RigidBodyDamping {
-                linear_damping: constants.default_damping,
-                ..Default::default()
-            }
-            .into(),
-            forces: RigidBodyForces {
-                gravity_scale: 0.,
-                ..Default::default()
-            }
-            .into(),
+        .insert(RigidBody::Dynamic)
+        .insert_bundle(TransformBundle::from(Transform::from_xyz(-1., 0., Z)))
+        .insert(Ccd::enabled())
+        .insert(GravityScale(0.))
+        .insert(Velocity::default())
+        .insert(Damping {
+            linear_damping: constants.default_damping,
             ..Default::default()
         })
-        .insert_bundle(ColliderBundle {
-            shape: ColliderShape::ball(0.3).into(),
-            material: collider_material.clone().into(),
-            ..Default::default()
-        })
-        .insert(RigidBodyPositionSync::Discrete)
-        .with_children(|commands| {
-            let mut color = Color::ORANGE;
-            color.set_a(0.5);
+        .insert(ExternalImpulse::default())
+        .insert(ExternalForce::default())
+        .insert_bundle((Collider::ball(0.3), friction, restitution))
+        .insert(ColliderDebugColor(Color::MIDNIGHT_BLUE));
+    // .with_children(|commands| {
+    //     let mut color = Color::ORANGE;
+    //     color.set_a(0.5);
 
-            commands
-                .spawn()
-                .insert(Trail)
-                .insert_bundle(GeometryBuilder::build_as(
-                    &shapes::Polygon::default(),
-                    DrawMode::Fill(FillMode::color(color)),
-                    Transform::default(),
-                ));
-        });
+    //     commands
+    //         .spawn()
+    //         .insert(Trail)
+    //         .insert_bundle(GeometryBuilder::build_as(
+    //             &shapes::Polygon::default(),
+    //             DrawMode::Fill(FillMode::color(color)),
+    //             Transform::default(),
+    //         ));
+    // });
 
     commands
         .spawn()
-        .insert_bundle(GeometryBuilder::build_as(
-            &shape_ball,
-            DrawMode::Fill(FillMode::color(Color::RED)),
-            Transform::default(),
-        ))
-        .insert_bundle(RigidBodyBundle {
-            position: Vec2::new(0.5, 0.5).into(),
-            ccd: ccd.clone().into(),
-            ..Default::default()
-        })
-        .insert_bundle(ColliderBundle {
-            shape: ColliderShape::ball(0.3).into(),
-            material: collider_material.clone().into(),
-            ..Default::default()
-        })
-        .insert(RigidBodyPositionSync::Discrete);
+        .insert(Name::new("Other ball"))
+        .insert(RigidBody::Dynamic)
+        .insert_bundle(TransformBundle::from(Transform::from_xyz(-1.1, 1., Z)))
+        .insert(Ccd::enabled())
+        .insert_bundle((Collider::ball(0.3), friction, restitution));
+}
+
+fn reset_z_position(mut colliders: Query<&mut Transform, With<Collider>>) {
+    for mut transform in &mut colliders {
+        transform.translation.z = 0.;
+        transform.rotation = Quat::default();
+    }
+}
+
+/// Cancel the external force applied to the player.
+fn cancel_force(mut player: Query<&mut ExternalForce, (With<Player>, Changed<ExternalForce>)>) {
+    for mut ext_force in &mut player {
+        ext_force.force = Vec3::ZERO;
+    }
 }
 
 struct ImpulseCooldown(Cooldown);
 
 impl Default for ImpulseCooldown {
     fn default() -> Self {
-        ImpulseCooldown(Cooldown::from_seconds(0.35))
+        Self(Cooldown::from_seconds(0.35))
     }
 }
 
@@ -206,12 +197,12 @@ fn apply_forces(
     mut impulse_cooldown: Local<ImpulseCooldown>,
     time: Res<Time>,
     mut input_events: EventReader<InputEvent>,
-    mut rigid_bodies: Query<
+    mut player: Query<
         (
-            &mut RigidBodyVelocityComponent,
-            &RigidBodyMassPropsComponent,
-            &mut RigidBodyDampingComponent,
-            &mut RigidBodyForcesComponent,
+            &Velocity,
+            &mut ExternalImpulse,
+            &mut ExternalForce,
+            &mut Damping,
             &mut Heat,
         ),
         With<Player>,
@@ -229,17 +220,16 @@ fn apply_forces(
 
                 let impulse = *direction * constants.impulse_value;
 
-                for (mut velocity, mass_props, mut damping, _, mut heat) in rigid_bodies.iter_mut()
-                {
+                for (_, mut ext_impulse, _, mut damping, mut heat) in &mut player {
                     damping.linear_damping = constants.default_damping;
-                    velocity.apply_impulse(mass_props, impulse.into());
-                    heat.inc(0.1)
+                    ext_impulse.impulse = Vec3::new(impulse.x, impulse.y, Z);
+                    heat.inc(0.2);
                 }
             }
             InputEvent::Stabilisation => {
-                for (_, _, mut damping, _, mut heat) in rigid_bodies.iter_mut() {
+                for (_, _, _, mut damping, mut heat) in &mut player {
                     damping.linear_damping = constants.stabilisation_damping;
-                    heat.inc(-1.)
+                    heat.inc(-1.);
                 }
             }
             InputEvent::Accelerate => {
@@ -248,70 +238,67 @@ fn apply_forces(
                 }
                 impulse_cooldown.0.start();
 
-                for (mut velocity, mass_props, _, _, mut heat) in rigid_bodies.iter_mut() {
+                for (velocity, mut ext_impulse, _, _, mut heat) in &mut player {
                     let impulse = velocity.linvel * constants.acceleration_value;
-                    velocity.apply_impulse(mass_props, impulse.into());
-                    heat.inc(0.1)
+                    ext_impulse.impulse = impulse;
+                    heat.inc(0.2);
                 }
             }
             InputEvent::Force { direction } => {
                 let force = *direction * constants.force_value;
 
-                for (_, _, mut damping, mut forces, mut heat) in rigid_bodies.iter_mut() {
+                for (_, _, mut ext_force, mut damping, _) in &mut player {
                     damping.linear_damping = constants.default_damping;
-                    forces.force = force.into();
-                    heat.inc(0.01)
+                    ext_force.force = Vec3::new(force.x, force.y, Z);
                 }
             }
         }
     }
 }
 
-fn update_heat_color(mut colors: Query<(&Heat, &mut DrawMode), (With<Player>, Changed<Heat>)>) {
-    for (heat, draw_mode) in colors.iter_mut() {
-        if let DrawMode::Fill(mut fill_mode) = *draw_mode {
-            let percent = heat.amount;
-            fill_mode.color = Color::RED * percent + Color::MIDNIGHT_BLUE * (1. - percent);
-        }
-    }
-}
-
-#[derive(Default)]
-struct Position(Vec2);
-
-fn update_trails(
-    mut trail_paths: Query<(&mut Path, &Parent), With<Trail>>,
-    mut previous_pos: Local<Position>,
-    transforms: Query<&Transform, Changed<RigidBodyVelocityComponent>>,
-    rapier_config: Res<RapierConfiguration>,
-    constants: Res<Constants>,
+fn update_heat_color(
+    mut player: Query<(&Heat, &mut ColliderDebugColor), (With<Player>, Changed<Heat>)>,
 ) {
-    let scale = rapier_config.scale;
-    let size = 0.3 * scale;
-
-    for (mut path, parent) in trail_paths.iter_mut() {
-        let pos = if let Ok(transform) = transforms.get(parent.0) {
-            transform.translation.truncate()
-        } else {
-            continue;
-        };
-
-        let delta = previous_pos.0 - pos;
-        previous_pos.0 = pos;
-
-        if delta == Vec2::ZERO {
-            continue;
-        }
-        let trail = delta.normalize() * (size * constants.trail_size_scale + delta.length());
-
-        let polygon = shapes::Polygon {
-            points: vec![
-                trail,
-                Vec2::new(trail.y, -trail.x).normalize() * size, // 90 degrees clockwize
-                Vec2::new(-trail.y, trail.x).normalize() * size, // 90 degrees counterclockwize
-            ],
-            closed: true,
-        };
-        *path = ShapePath::build_as(&polygon);
+    for (heat, mut debug_color) in &mut player {
+        let percent = heat.amount;
+        debug_color.0 = Color::RED * percent + Color::MIDNIGHT_BLUE * (1. - percent);
     }
 }
+
+// #[derive(Default)]
+// struct Position(Vec2);
+
+// fn update_trails(
+//     mut trail_paths: Query<(&mut Path, &Parent), With<Trail>>,
+//     mut previous_pos: Local<Position>,
+//     transforms: Query<&Transform, Changed<Velocity>>,
+//     constants: Res<Constants>,
+// ) {
+//     let size = 0.3 * SCALE;
+
+//     for (mut path, parent) in trail_paths.iter_mut() {
+//         let pos = if let Ok(transform) = transforms.get(parent.get()) {
+//             transform.translation.truncate()
+//         } else {
+//             continue;
+//         };
+
+//         let delta = previous_pos.0 - pos;
+//         previous_pos.0 = pos;
+
+//         if delta == Vec2::ZERO {
+//             continue;
+//         }
+//         let trail = delta.normalize() * (size * constants.trail_size_scale + delta.length());
+
+//         let polygon = shapes::Polygon {
+//             points: vec![
+//                 trail,
+//                 Vec2::new(trail.y, -trail.x).normalize() * size, // 90 degrees clockwize
+//                 Vec2::new(-trail.y, trail.x).normalize() * size, // 90 degrees counterclockwize
+//             ],
+//             closed: true,
+//         };
+//         *path = ShapePath::build_as(&polygon);
+//     }
+// }
