@@ -129,14 +129,16 @@ fn setup_physics(mut commands: Commands, constants: Res<Constants>) {
         .insert(Name::new("Player"))
         .insert(Player)
         .insert(Heat { amount: 0. })
-        .insert(RigidBody::Dynamic)
         .insert_bundle(TransformBundle::from(Transform::from_xyz(-100., 0., Z)))
-        .insert(Ccd::enabled())
-        .insert(GravityScale(0.))
-        .insert(Velocity::default())
-        .insert(Damping::splat(constants.default_damping))
-        .insert(ExternalImpulse::default())
-        .insert(ExternalForce::default())
+        .insert_bundle((
+            RigidBody::Dynamic,
+            Ccd::enabled(),
+            GravityScale(0.),
+            Velocity::default(),
+            Damping::splat(constants.default_damping),
+            ExternalImpulse::default(),
+            ExternalForce::default(),
+        ))
         .insert_bundle((
             Collider::ball(30.),
             friction,
@@ -161,9 +163,8 @@ fn setup_physics(mut commands: Commands, constants: Res<Constants>) {
     commands
         .spawn()
         .insert(Name::new("Other ball"))
-        .insert(RigidBody::Dynamic)
         .insert_bundle(TransformBundle::from(Transform::from_xyz(-110., 100., Z)))
-        .insert(Ccd::enabled())
+        .insert_bundle((RigidBody::Dynamic, Ccd::enabled()))
         .insert_bundle((Collider::ball(30.), friction, restitution));
 }
 
