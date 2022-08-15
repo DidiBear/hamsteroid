@@ -71,7 +71,6 @@ fn main() {
         .add_startup_system(setup_physics)
         .add_system(close_on_esc)
         .add_system(apply_forces)
-        .add_system(reset_z_position.after(apply_forces))
         .add_system(cancel_force.before(apply_forces))
         .add_system(update_heat_color)
         .run();
@@ -132,10 +131,7 @@ fn setup_physics(mut commands: Commands, constants: Res<Constants>) {
         .insert(Ccd::enabled())
         .insert(GravityScale(0.))
         .insert(Velocity::default())
-        .insert(Damping {
-            linear_damping: constants.default_damping,
-            ..default()
-        })
+        .insert(Damping::splat(constants.default_damping))
         .insert(ExternalImpulse::default())
         .insert(ExternalForce::default())
         .insert_bundle((Collider::ball(30.), friction, restitution))
@@ -161,13 +157,6 @@ fn setup_physics(mut commands: Commands, constants: Res<Constants>) {
         .insert_bundle(TransformBundle::from(Transform::from_xyz(-110., 100., Z)))
         .insert(Ccd::enabled())
         .insert_bundle((Collider::ball(30.), friction, restitution));
-}
-
-fn reset_z_position(mut colliders: Query<&mut Transform, With<Collider>>) {
-    for mut transform in &mut colliders {
-        transform.translation.z = 0.;
-        transform.rotation = Quat::default();
-    }
 }
 
 /// Cancel the external force applied to the player.
@@ -214,14 +203,14 @@ fn apply_forces(
                 let impulse = *direction * constants.impulse_value;
 
                 for (_, mut ext_impulse, _, mut damping, mut heat) in &mut player {
-                    damping.linear_damping = constants.default_damping;
+                    *damping = Damping::splat(constants.default_damping);
                     ext_impulse.impulse = impulse;
                     heat.inc(0.2);
                 }
             }
             InputEvent::Stabilisation => {
                 for (_, _, _, mut damping, mut heat) in &mut player {
-                    damping.linear_damping = constants.stabilisation_damping;
+                    *damping = Damping::splat(constants.stabilisation_damping);
                     heat.inc(-1.);
                 }
             }
@@ -295,3 +284,16 @@ fn update_heat_color(
 //         *path = ShapePath::build_as(&polygon);
 //     }
 // }
+
+trait DampingExt {
+    fn splat(value: f32) -> Damping;
+}
+
+impl DampingExt for Damping {
+    fn splat(value: f32) -> Damping {
+        Damping {
+            linear_damping: value,
+            angular_damping: value,
+        }
+    }
+}
