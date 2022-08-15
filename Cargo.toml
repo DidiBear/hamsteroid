@@ -3,10 +3,17 @@ name = "hamsteroid"
 version = "0.1.0"
 edition = "2021"
 
+# Enable a small amount of optimization in debug mode
+[profile.dev]
+opt-level = 1
+
+# Enable high optimizations for dependencies (incl. Bevy), but not for our code:
+[profile.dev.package."*"]
+opt-level = 3
+
 [dependencies]
-bevy = "0.8"
-# bevy_rapier2d = "0.16"
-bevy_rapier3d = "0.16"
+bevy = { version = "0.8.0", features = ["dynamic"] }
+bevy_rapier2d = { git = "https://github.com/dimforge/bevy_rapier", rev = "9386e32" }
 bevy_prototype_lyon = "0.6"
 bevy_flycam = "*"
 bevy-inspector-egui = "0.12"

@@ -1,7 +1,7 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 #![forbid(unsafe_code)]
-#![deny(clippy::all, clippy::pedantic, clippy::nursery)] // clippy::cargo
+#![deny(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
 #![deny(clippy::unwrap_used, clippy::indexing_slicing)]
 #![allow(
     clippy::needless_pass_by_value,
@@ -11,7 +11,7 @@
 
 use bevy::{prelude::*, window::close_on_esc};
 use bevy_inspector_egui::{Inspectable, InspectorPlugin, WorldInspectorPlugin};
-use bevy_rapier3d::prelude::*;
+use bevy_rapier2d::prelude::*;
 
 // use bevy_flycam::{FlyCam, NoCameraPlayerPlugin, PlayerPlugin};
 
@@ -21,7 +21,6 @@ mod inputs;
 use cooldown::Cooldown;
 use inputs::{InputEvent, InputsPlugin};
 
-const DEPTH: f32 = 0.1;
 const Z: f32 = 0.0;
 
 #[derive(Inspectable)]
@@ -44,10 +43,10 @@ impl Default for Constants {
     fn default() -> Self {
         Self {
             // Movement configs
-            stabilisation_damping: 5.,
+            stabilisation_damping: 6.,
             default_damping: 1.,
-            impulse_value: 7.,
-            force_value: 3.,
+            impulse_value: 15.,
+            force_value: 6.,
             acceleration_value: 0.3,
             // Trail configs
             trail_size_scale: 0.5,
@@ -64,7 +63,7 @@ fn main() {
         .insert_resource(ClearColor(Color::GRAY))
         .add_plugin(InspectorPlugin::<Constants>::new())
         .add_plugin(WorldInspectorPlugin::new())
-        .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
+        .add_plugin(RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(1.))
         .add_plugin(InputsPlugin)
         .add_plugin(RapierDebugRenderPlugin::default())
         // .add_plugin(NoCameraPlayerPlugin)
@@ -79,13 +78,10 @@ fn main() {
 }
 
 fn setup_camera(mut commands: Commands) {
-    commands
-        .spawn_bundle(Camera3dBundle {
-            transform: Transform::from_xyz(0., 0., Z + 10.0).looking_at(Vec3::ZERO, Vec3::Y),
-            ..Default::default()
-        })
-        // .insert(FlyCam)
-        ;
+    commands.spawn_bundle(Camera2dBundle {
+        transform: Transform::from_scale(Vec3::splat(0.01)),
+        ..default()
+    });
 }
 
 #[derive(Component)]
@@ -120,7 +116,7 @@ fn setup_physics(mut commands: Commands, constants: Res<Constants>) {
         commands
             .spawn()
             .insert(Name::new(name.to_string()))
-            .insert_bundle((Collider::cuboid(w, h, DEPTH), friction, restitution))
+            .insert_bundle((Collider::cuboid(w, h), friction, restitution))
             .insert_bundle(TransformBundle::from(Transform::from_xyz(pos.x, pos.y, Z)));
     };
 
@@ -141,7 +137,7 @@ fn setup_physics(mut commands: Commands, constants: Res<Constants>) {
         .insert(Velocity::default())
         .insert(Damping {
             linear_damping: constants.default_damping,
-            ..Default::default()
+            ..default()
         })
         .insert(ExternalImpulse::default())
         .insert(ExternalForce::default())
@@ -180,7 +176,7 @@ fn reset_z_position(mut colliders: Query<&mut Transform, With<Collider>>) {
 /// Cancel the external force applied to the player.
 fn cancel_force(mut player: Query<&mut ExternalForce, (With<Player>, Changed<ExternalForce>)>) {
     for mut ext_force in &mut player {
-        ext_force.force = Vec3::ZERO;
+        ext_force.force = Vec2::ZERO;
     }
 }
 
@@ -222,7 +218,7 @@ fn apply_forces(
 
                 for (_, mut ext_impulse, _, mut damping, mut heat) in &mut player {
                     damping.linear_damping = constants.default_damping;
-                    ext_impulse.impulse = Vec3::new(impulse.x, impulse.y, Z);
+                    ext_impulse.impulse = impulse;
                     heat.inc(0.2);
                 }
             }
@@ -249,7 +245,7 @@ fn apply_forces(
 
                 for (_, _, mut ext_force, mut damping, _) in &mut player {
                     damping.linear_damping = constants.default_damping;
-                    ext_force.force = Vec3::new(force.x, force.y, Z);
+                    ext_force.force = force;
                 }
             }
         }
