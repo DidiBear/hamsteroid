@@ -17,3 +17,4 @@ bevy_rapier2d = { git = "https://github.com/dimforge/bevy_rapier", rev = "9386e3
 bevy_prototype_lyon = "0.6"
 bevy_flycam = "*"
 bevy-inspector-egui = "0.12"
+bevy_hanabi = "0.3"

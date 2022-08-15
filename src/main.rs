@@ -17,9 +17,11 @@ use bevy_rapier2d::prelude::*;
 
 mod cooldown;
 mod inputs;
+mod particles;
 
 use cooldown::Cooldown;
 use inputs::{InputEvent, InputsPlugin};
+use particles::ParticleEffectPlugin;
 
 const Z: f32 = 0.0;
 
@@ -60,6 +62,7 @@ fn main() {
     App::new()
         .insert_resource(Msaa::default())
         .add_plugins(DefaultPlugins)
+        .add_plugin(ParticleEffectPlugin)
         .insert_resource(ClearColor(Color::BLACK))
         .add_plugin(InspectorPlugin::<Constants>::new())
         .add_plugin(WorldInspectorPlugin::new())
@@ -134,8 +137,13 @@ fn setup_physics(mut commands: Commands, constants: Res<Constants>) {
         .insert(Damping::splat(constants.default_damping))
         .insert(ExternalImpulse::default())
         .insert(ExternalForce::default())
-        .insert_bundle((Collider::ball(30.), friction, restitution))
-        .insert(ColliderDebugColor(Color::MIDNIGHT_BLUE));
+        .insert_bundle((
+            Collider::ball(30.),
+            friction,
+            restitution,
+            ActiveEvents::COLLISION_EVENTS,
+            ColliderDebugColor(Color::MIDNIGHT_BLUE),
+        ));
     // .with_children(|commands| {
     //     let mut color = Color::ORANGE;
     //     color.set_a(0.5);
