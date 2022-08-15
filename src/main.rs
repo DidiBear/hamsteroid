@@ -45,8 +45,8 @@ impl Default for Constants {
             // Movement configs
             stabilisation_damping: 6.,
             default_damping: 1.,
-            impulse_value: 15.,
-            force_value: 6.,
+            impulse_value: 1500.,
+            force_value: 600.,
             acceleration_value: 0.3,
             // Trail configs
             trail_size_scale: 0.5,
@@ -60,10 +60,10 @@ fn main() {
     App::new()
         .insert_resource(Msaa::default())
         .add_plugins(DefaultPlugins)
-        .insert_resource(ClearColor(Color::GRAY))
+        .insert_resource(ClearColor(Color::BLACK))
         .add_plugin(InspectorPlugin::<Constants>::new())
         .add_plugin(WorldInspectorPlugin::new())
-        .add_plugin(RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(1.))
+        .add_plugin(RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(100.)) // scale = cm
         .add_plugin(InputsPlugin)
         .add_plugin(RapierDebugRenderPlugin::default())
         // .add_plugin(NoCameraPlayerPlugin)
@@ -78,10 +78,7 @@ fn main() {
 }
 
 fn setup_camera(mut commands: Commands) {
-    commands.spawn_bundle(Camera2dBundle {
-        transform: Transform::from_scale(Vec3::splat(0.01)),
-        ..default()
-    });
+    commands.spawn_bundle(Camera2dBundle::default());
 }
 
 #[derive(Component)]
@@ -107,7 +104,7 @@ fn setup_physics(mut commands: Commands, constants: Res<Constants>) {
         .spawn()
         .insert(Name::new("Center"))
         .insert_bundle(TransformBundle::from(Transform::from_xyz(0.0, 0.0, Z)))
-        .insert(Collider::ball(0.05));
+        .insert(Collider::ball(5.));
 
     let friction = Friction::coefficient(0.);
     let restitution = Restitution::coefficient(0.9);
@@ -120,10 +117,10 @@ fn setup_physics(mut commands: Commands, constants: Res<Constants>) {
             .insert_bundle(TransformBundle::from(Transform::from_xyz(pos.x, pos.y, Z)));
     };
 
-    spawn_border("Top", 10., 0.1, Vec2::new(0., 3.));
-    spawn_border("Bottom", 10., 0.1, Vec2::new(0., -3.));
-    spawn_border("Left", 0.1, 5., Vec2::new(-6., 0.));
-    spawn_border("Right", 0.1, 5., Vec2::new(6., 0.));
+    spawn_border("Top", 1000., 10., Vec2::new(0., 300.));
+    spawn_border("Bottom", 1000., 10., Vec2::new(0., -300.));
+    spawn_border("Left", 10., 500., Vec2::new(-600., 0.));
+    spawn_border("Right", 10., 500., Vec2::new(600., 0.));
 
     commands
         .spawn()
@@ -131,7 +128,7 @@ fn setup_physics(mut commands: Commands, constants: Res<Constants>) {
         .insert(Player)
         .insert(Heat { amount: 0. })
         .insert(RigidBody::Dynamic)
-        .insert_bundle(TransformBundle::from(Transform::from_xyz(-1., 0., Z)))
+        .insert_bundle(TransformBundle::from(Transform::from_xyz(-100., 0., Z)))
         .insert(Ccd::enabled())
         .insert(GravityScale(0.))
         .insert(Velocity::default())
@@ -141,7 +138,7 @@ fn setup_physics(mut commands: Commands, constants: Res<Constants>) {
         })
         .insert(ExternalImpulse::default())
         .insert(ExternalForce::default())
-        .insert_bundle((Collider::ball(0.3), friction, restitution))
+        .insert_bundle((Collider::ball(30.), friction, restitution))
         .insert(ColliderDebugColor(Color::MIDNIGHT_BLUE));
     // .with_children(|commands| {
     //     let mut color = Color::ORANGE;
@@ -161,9 +158,9 @@ fn setup_physics(mut commands: Commands, constants: Res<Constants>) {
         .spawn()
         .insert(Name::new("Other ball"))
         .insert(RigidBody::Dynamic)
-        .insert_bundle(TransformBundle::from(Transform::from_xyz(-1.1, 1., Z)))
+        .insert_bundle(TransformBundle::from(Transform::from_xyz(-110., 100., Z)))
         .insert(Ccd::enabled())
-        .insert_bundle((Collider::ball(0.3), friction, restitution));
+        .insert_bundle((Collider::ball(30.), friction, restitution));
 }
 
 fn reset_z_position(mut colliders: Query<&mut Transform, With<Collider>>) {
