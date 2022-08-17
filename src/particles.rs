@@ -6,7 +6,7 @@ use bevy::{
 use bevy_hanabi::*;
 use bevy_rapier2d::prelude::*;
 
-use crate::{inputs::InputEvent, Player};
+use crate::{inputs::InputEvent, Player, PLAYER_RADIUS};
 
 pub struct ParticleEffectPlugin;
 
@@ -34,18 +34,46 @@ struct ExplosionEffect;
 #[derive(Component)]
 struct CollisionEffect;
 
-fn setup_particle_effects(mut commands: Commands, mut effects: ResMut<Assets<EffectAsset>>) {
-    commands
-        .spawn()
-        .insert(CollisionEffect)
-        .insert(Name::new("Collision effect"))
-        .insert_bundle(ParticleEffectBundle::new(effects.add(collision_effect())));
+#[derive(Component)]
+pub struct PropulsorEffect;
 
+fn setup_particle_effects(mut commands: Commands, mut effects: ResMut<Assets<EffectAsset>>) {
+    spawn_particle_effect(
+        &mut commands,
+        &mut effects,
+        "Collision effect",
+        CollisionEffect,
+        collision_effect(),
+    );
+    spawn_particle_effect(
+        &mut commands,
+        &mut effects,
+        "Explosion effect",
+        ExplosionEffect,
+        explosion_effect(),
+    );
+    spawn_particle_effect(
+        &mut commands,
+        &mut effects,
+        "Propulsor effect",
+        PropulsorEffect,
+        propulsor_effect(),
+    );
+}
+
+fn spawn_particle_effect(
+    commands: &mut Commands,
+    effects: &mut ResMut<Assets<EffectAsset>>,
+    name: &'static str,
+    tag: impl Component,
+    effect: EffectAsset,
+) {
+    let spawner = effect.spawner;
     commands
         .spawn()
-        .insert(ExplosionEffect)
-        .insert(Name::new("Explosion effect"))
-        .insert_bundle(ParticleEffectBundle::new(effects.add(explosion_effect())));
+        .insert(tag)
+        .insert(Name::new(name))
+        .insert_bundle(ParticleEffectBundle::new(effects.add(effect)).with_spawner(spawner));
 }
 
 fn collision_effect() -> EffectAsset {
@@ -53,7 +81,7 @@ fn collision_effect() -> EffectAsset {
     gradient.add_key(0., Color::GRAY.into());
     gradient.add_key(1., Color::BLACK.into());
 
-    let spawner = Spawner::once(30.0.into(), false);
+    let spawner = Spawner::once(15.0.into(), false);
 
     EffectAsset {
         name: "Impact".into(),
@@ -63,7 +91,7 @@ fn collision_effect() -> EffectAsset {
     }
     .init(PositionSphereModifier {
         radius: 5.,
-        speed: 100.0.into(),
+        speed: 50.0.into(),
         dimension: ShapeDimension::Surface,
         ..default()
     })
@@ -76,7 +104,7 @@ fn collision_effect() -> EffectAsset {
 
 fn explosion_effect() -> EffectAsset {
     let mut gradient = Gradient::new();
-    gradient.add_key(0., Color::rgba(1., 1., 0., 1.).into()); // yelow
+    gradient.add_key(0., Color::rgba(1., 1., 0., 1.).into());
     gradient.add_key(1., Color::rgba(1., 0., 0., 0.).into());
 
     let spawner = Spawner::once(100.0.into(), false);
@@ -88,14 +116,40 @@ fn explosion_effect() -> EffectAsset {
         ..default()
     }
     .init(PositionSphereModifier {
-        radius: 50.,
+        radius: 25.,
         speed: 200.0.into(),
         dimension: ShapeDimension::Surface,
         ..default()
     })
-    .init(ParticleLifetimeModifier { lifetime: 1. })
+    .init(ParticleLifetimeModifier { lifetime: 0.5 })
     .render(SizeOverLifetimeModifier {
         gradient: Gradient::constant(Vec2::splat(5.)),
+    })
+    .render(ColorOverLifetimeModifier { gradient })
+}
+
+fn propulsor_effect() -> EffectAsset {
+    let mut gradient = Gradient::new();
+    gradient.add_key(0., Color::rgba(1., 1., 0., 1.).into());
+    gradient.add_key(1., Color::rgba(1., 0., 0., 0.).into());
+
+    let spawner = Spawner::once(20.0.into(), false);
+
+    EffectAsset {
+        name: "Propulsor".into(),
+        capacity: 32768,
+        spawner,
+        ..default()
+    }
+    .init(PositionSphereModifier {
+        radius: 10.,
+        speed: 10.0.into(),
+        dimension: ShapeDimension::Surface,
+        ..default()
+    })
+    .init(ParticleLifetimeModifier { lifetime: 0.5 })
+    .render(SizeOverLifetimeModifier {
+        gradient: Gradient::constant(Vec2::splat(4.)),
     })
     .render(ColorOverLifetimeModifier { gradient })
 }
@@ -112,18 +166,30 @@ fn trigger_collision_effects(
         if let CollisionEvent::Started(..) = collision_event {
             let (mut effect, mut effect_transform) = effect.single_mut();
             let transform = player.single();
-            println!("Received collision event: {:?}", collision_event);
             effect_transform.translation = transform.translation;
             effect.maybe_spawner().unwrap().reset();
         }
     }
 }
+
 fn trigger_input_effects(
     // mut impulse_cooldown: Local<ImpulseCooldown>,
     mut input_events: EventReader<InputEvent>,
-    mut effect: Query<
+    mut explosion_effect: Query<
         (&mut ParticleEffect, &mut Transform),
-        (With<ExplosionEffect>, Without<Player>),
+        (
+            With<ExplosionEffect>,
+            Without<Player>,
+            Without<PropulsorEffect>,
+        ),
+    >,
+    mut propulsor_effect: Query<
+        (&mut ParticleEffect, &mut Transform),
+        (
+            With<PropulsorEffect>,
+            Without<Player>,
+            Without<ExplosionEffect>,
+        ),
     >,
     player: Query<&Transform, With<Player>>,
 ) {
@@ -131,15 +197,30 @@ fn trigger_input_effects(
 
     for input_event in input_events.iter() {
         match input_event {
-            InputEvent::Impulse { direction: _ } => {
-                let (mut effect, mut effect_transform) = effect.single_mut();
+            InputEvent::Impulse { direction } => {
+                let (mut effect, mut effect_transform) = explosion_effect.single_mut();
                 let transform = player.single();
-                effect_transform.translation = transform.translation;
+
+                let player_body = Vec3::from((*direction * -PLAYER_RADIUS, 0.));
+                effect_transform.translation = transform.translation + player_body;
+
                 effect.maybe_spawner().unwrap().reset();
             }
             InputEvent::Stabilisation => {}
-            InputEvent::Accelerate => {}
-            InputEvent::Force { direction: _ } => {}
+            InputEvent::Accelerate => {
+                let (mut effect, mut effect_transform) = explosion_effect.single_mut();
+                effect_transform.translation = player.single().translation;
+
+                effect.maybe_spawner().unwrap().reset();
+            }
+            InputEvent::Force { direction } => {
+                let (mut effect, mut effect_transform) = propulsor_effect.single_mut();
+                let transform = player.single();
+
+                let player_body = Vec3::from((*direction * -PLAYER_RADIUS, 0.));
+                effect_transform.translation = transform.translation + player_body;
+                effect.maybe_spawner().unwrap().reset();
+            }
         }
     }
 }

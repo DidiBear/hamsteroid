@@ -10,6 +10,7 @@
 )]
 
 use bevy::{prelude::*, window::close_on_esc};
+
 use bevy_inspector_egui::{Inspectable, InspectorPlugin, WorldInspectorPlugin};
 use bevy_rapier2d::prelude::*;
 
@@ -24,6 +25,7 @@ use inputs::{InputEvent, InputsPlugin};
 use particles::ParticleEffectPlugin;
 
 const Z: f32 = 0.0;
+const PLAYER_RADIUS: f32 = 30.;
 
 #[derive(Inspectable)]
 struct Constants {
@@ -111,10 +113,10 @@ fn setup_physics(mut commands: Commands, constants: Res<Constants>) {
     let friction = Friction::coefficient(0.);
     let restitution = Restitution::coefficient(0.9);
 
-    let mut spawn_border = |name: &str, w: f32, h: f32, pos: Vec2| {
+    let mut spawn_border = |name: &'static str, w: f32, h: f32, pos: Vec2| {
         commands
             .spawn()
-            .insert(Name::new(name.to_string()))
+            .insert(Name::new(name))
             .insert_bundle((Collider::cuboid(w, h), friction, restitution))
             .insert_bundle(TransformBundle::from(Transform::from_xyz(pos.x, pos.y, Z)));
     };
@@ -140,7 +142,7 @@ fn setup_physics(mut commands: Commands, constants: Res<Constants>) {
             ExternalForce::default(),
         ))
         .insert_bundle((
-            Collider::ball(30.),
+            Collider::ball(PLAYER_RADIUS),
             friction,
             restitution,
             ActiveEvents::COLLISION_EVENTS,
@@ -165,7 +167,7 @@ fn setup_physics(mut commands: Commands, constants: Res<Constants>) {
         .insert(Name::new("Other ball"))
         .insert_bundle(TransformBundle::from(Transform::from_xyz(-110., 100., Z)))
         .insert_bundle((RigidBody::Dynamic, Ccd::enabled()))
-        .insert_bundle((Collider::ball(30.), friction, restitution));
+        .insert_bundle((Collider::ball(PLAYER_RADIUS), friction, restitution));
 }
 
 /// Cancel the external force applied to the player.
